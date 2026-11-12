@@ -136,7 +136,7 @@ else { try { sessionStorage.setItem(SES_KEY, JSON.stringify(s)); } catch (e) {} 
 }
 function sesionBorrar() {
 const s = sesionLeer();
-try { localStorage.removeItem(SES_KEY); sessionStorage.removeItem(SES_KEY); if (s) localStorage.removeItem('fin-cache:' + s.usuario.id); localStorage.removeItem('fin-cache'); } catch (e) {}
+try { localStorage.removeItem(SES_KEY); sessionStorage.removeItem(SES_KEY); if (s) { localStorage.removeItem('fin-cache:' + s.usuario.id); localStorage.removeItem('fin-planes:' + s.usuario.id); } localStorage.removeItem('fin-cache'); } catch (e) {}
 }
 const usuarioActual = () => (sesionLeer() || {}).usuario || null;
 const cacheKey = () => 'fin-cache:' + ((usuarioActual() || {}).id || 'anon');
@@ -511,10 +511,12 @@ return s;
 }
 const refOf = e => e.srcType === 'rec' ? `rec:${e.src.id}:${e.recPeriodo}` : `mov:${e.src.id}:${e.cuota}`;
 const pagoId = ref => 'p_' + ref.replace(/[^A-Za-z0-9]/g, '_');
+const esAutoEv = e => e.srcType === 'mov' || !!(e.src && e.src.auto);
 function estadoEv(e) {
 const p = S.pagos[refOf(e)];
+if (p && p.estado === 'impago') return e.fecha <= S.today ? { st: 'pendiente' } : { st: 'proximo' };
 if (p) return { st: 'pagado', fecha: p.fecha || e.fecha, cuenta: p.cuentaId ? p.cuentaId : e.medio, ts: Number(p.ts) || 0 };
-if (e.srcType === 'mov' || e.src.auto) return e.fecha <= S.today ? { st: 'pagado', fecha: e.fecha, auto: true, cuenta: e.medio, ts: e.srcType === 'mov' ? Number(e.src.ts) || 0 : 0 } : { st: 'proximo' };
+if (esAutoEv(e)) return e.fecha <= S.today ? { st: 'pagado', fecha: e.fecha, auto: true, cuenta: e.medio, ts: e.srcType === 'mov' ? Number(e.src.ts) || 0 : 0 } : { st: 'proximo' };
 return e.fecha <= S.today ? { st: 'pendiente' } : { st: 'proximo' };
 }
 function estadoSt(stm) {
@@ -574,6 +576,31 @@ function finDeMes() {
 const run = withRunning([ymOf(S.today)])[0].filter(i => i.after != null);
 return run.length ? run[run.length - 1].after : disponible(S.today).ars;
 }
+const PLAN_CLAVE = /(^|[^\p{L}\d])app(?=$|[^\p{L}\d])/iu;
+const PLAN_MONTO = /\$\s*(\d[\d.,]*)(?:\s*(k|mil)(?![\p{L}\d]))?/iu;
+function planDeTitulo(t) {
+t = String(t || '');
+if (!PLAN_CLAVE.test(t)) return null;
+let monto = 0;
+const m = t.match(PLAN_MONTO);
+if (m) { const v = parseAmount(m[1]); if (v > 0) monto = Math.round(v * (m[2] ? 1000 : 1)); }
+const nombre = t.replace(new RegExp(PLAN_MONTO.source, 'giu'), ' ').replace(new RegExp(PLAN_CLAVE.source, 'giu'), '$1 ')
+.replace(/\s+/g, ' ').replace(/(\s*[-–—|·:,]\s*)+(?=[-–—|·:,]|$)/g, '').replace(/^[\s\-–—|·:,]+|[\s\-–—|·:,]+$/g, '').trim();
+return { nombre: nombre || 'Plan', monto };
+}
+function planesLista(eventos, filas, hoy) {
+const porId = {};
+(filas || []).forEach(f => { porId[f.id] = f; });
+return (eventos || []).map(e => {
+const p = planDeTitulo(e.titulo);
+if (!p) return null;
+const f = porId[e.id] || null;
+const monto = f && f.monto !== '' && f.monto != null ? Number(f.monto) || 0 : p.monto;
+return { id: e.id, fecha: e.fecha, hora: e.hora || '', nombre: p.nombre, monto, categoria: (f && f.categoria) || '', estado: (f && f.estado) || 'pendiente', fila: f, vencido: e.fecha < hoy };
+}).filter(p => p && p.estado === 'pendiente')
+.sort((a, b) => (b.vencido - a.vencido) || (a.fecha + a.hora < b.fecha + b.hora ? -1 : a.fecha + a.hora > b.fecha + b.hora ? 1 : 0));
+}
+const planesEstimado = (lista, M) => sum(lista.filter(p => p.fecha.slice(0, 7) === M), p => p.monto);
 const MESES_BBVA = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12 };
 function fechaBBVA(s) {
 const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/.exec(String(s || '').trim());
@@ -993,6 +1020,7 @@ ${accts}
 <div><span><i style="background:var(--neg)"></i>Egresos</span><b class="num">${money(f.sale)}</b></div>
 <div><span>Resultado</span><b class="num ${neg ? 'negt' : ''}">${money(f.balance)}</b></div>
 </div>
+${M >= ymOf(S.today) && planesEstimado(planesAbiertos(), M) > 0 ? `<p class="hint" style="margin:8px 0 0">Planes del mes: <b class="num">${money(planesEstimado(planesAbiertos(), M))}</b> estimado. No descuenta del disponible hasta que se registra el gasto.</p>` : ''}
 ${M < ymOf(S.today) ? `<p class="hint" style="margin:8px 0 0">${f.ahReal != null ? `Ahorro real del mes: <b>${money(f.ahReal)}</b>${f.noReg ? `; los egresos incluyen ${money(f.noReg)} de gastos no registrados` : ''}. ` : 'Si el ahorro real del mes fue distinto, cárguelo y la diferencia se registra como gastos no registrados. '}<button class="link" data-act="ahorroReal" data-m="${M}">${f.ahReal != null ? 'Cambiar ahorro real' : 'Cargar ahorro real'}</button></p>` : ''}
 <div class="runway">${fit(w => runwayChart(months, M, w))}</div>
 <p class="runway-note">Seleccioná un mes para ver el detalle. · <button class="link" data-act="simulador">Simulador de compra</button></p>
@@ -1011,6 +1039,7 @@ ${ins.map(it => payRow(it, false)).join('')}
 </section>` : ''}
 ${panelDeudas()}
 </div><div>
+${panelPlanes()}
 <section class="panel">
 <div class="ph"><h2>Últimos movimientos</h2><span class="meta">${movs.length} en ${mesL(M)}</span></div>
 ${movs.length ? movs.slice(0, 8).map(evRow).join('') + `<button class="btn small" style="width:100%;margin-top:8px" data-act="sub" data-sv="inicio" data-t="movimientos">Ver los ${movs.length} movimientos</button>` : `<div class="empty">Sin movimientos.<br><button class="btn" data-act="new">Cargar el primero</button></div>`}
@@ -1082,22 +1111,18 @@ draw();
 async function togglePay(it, extra) {
 if (!it || !it.estado) return;
 const paid = it.estado.st === 'pagado';
-if (!paid && !extra && !it.estado.auto) { askPago(it); return; }
-if (it.estado.auto) {
-toast(it.ev && it.ev.srcType === 'mov' ? 'Los movimientos registrados manualmente se consideran realizados en su fecha.'
-: it.in ? 'Este ingreso se acredita automáticamente en su fecha. Para marcarlo manualmente, desactivá "Acreditación automática" en el fijo.'
-: 'Este fijo se debita solo: se marca pagado en su fecha.');
-return;
-}
+if (!paid && !extra) { askPago(it); return; }
 let sheet, obj = null, remove = null;
 if (it.card) {
 const r = it.stm.row || {};
 sheet = 'Resumenes';
 obj = { ...r, id: r.id || `r_${it.card.id}_${it.stm.P.replace('-', '')}`, tarjetaId: it.card.id, periodo: it.stm.P, cierre: r.cierre || it.stm.cierre, venc: r.venc || it.stm.venc, totalARS: r.totalARS ?? '', totalUSD: r.totalUSD ?? '', pagado: !paid, ts: paid ? '' : Date.now(), fechaPago: paid ? '' : (extra.fecha || S.today), tc: paid ? '' : (extra.tc ?? ''), cuentaPago: paid ? '' : (extra.cuentaId || '') };
 } else {
-const ref = refOf(it.ev);
+const ref = refOf(it.ev), id = pagoId(ref), fila = (S.data.Pagos || []).find(r => r.id === id) || {};
 sheet = 'Pagos';
-if (paid) remove = pagoId(ref); else obj = { id: pagoId(ref), ref, fecha: extra.fecha || S.today, monto: Math.round(it.monto * 100) / 100, cuentaId: extra.cuentaId || '', ts: Date.now() };
+if (paid && esAutoEv(it.ev)) obj = { ...fila, id, ref, fecha: '', monto: '', cuentaId: '', estado: 'impago', ts: Date.now() };
+else if (paid) remove = id;
+else obj = { ...fila, id, ref, fecha: extra.fecha || S.today, monto: Math.round(it.monto * 100) / 100, cuentaId: extra.cuentaId || '', estado: '', ts: Date.now() };
 }
 const prev = JSON.stringify(S.data);
 const list = S.data[sheet] = S.data[sheet] || [];
@@ -1781,6 +1806,66 @@ if (!/^https?:/i.test(u)) u = 'https:' + '/' + '/' + u.replace(/^\/+/, '');
 return /^https?:\/\/[^\s"'<>]+$/i.test(u) ? u : '';
 }
 const fechaCorta = f => f ? fmtDate(f) + (f.slice(0, 4) !== S.today.slice(0, 4) ? ' ' + f.slice(0, 4) : '') : '—';
+const PLANES_DIAS = 60;
+function planesAbiertos() {
+const P = S.planes;
+if (!P || !P.eventos || !S.data) return [];
+const hasta = new Date(Date.parse(S.today + 'T12:00:00') + PLANES_DIAS * 864e5).toISOString().slice(0, 10);
+return planesLista(P.eventos, S.data.Planes || [], S.today).filter(p => p.fecha <= hasta);
+}
+function catPlan(p) {
+if (p.categoria && S.data.Categorias.some(c => c.id === p.categoria)) return p.categoria;
+return (S.data.Categorias.find(c => c.tipo === 'gasto' && (c.id === 'salidas' || /^salidas?$/i.test(c.nombre))) || catsFrecuentes(1)[0] || {}).id || '';
+}
+const diaPlan = p => { const d = DIAS[new Date(p.fecha + 'T12:00:00').getDay()]; return `${d.slice(0, 3)} ${fechaCorta(p.fecha)}${p.hora ? ' · ' + p.hora : ''}`; };
+function panelPlanes() {
+const P = S.planes;
+if (!P || P.soloAdmin) return '';
+const lista = planesAbiertos(), cur = ymOf(S.today), est = planesEstimado(lista, cur), pend = lista.filter(p => p.vencido).length;
+const fila = p => {
+const c = catOf(catPlan(p)) || {};
+return `<button class="row" data-act="plan" data-id="${esc(p.id)}">
+<span class="emo">${esc(c.emoji || '📅')}</span>
+<span class="rbody"><span class="rtitle">${esc(p.nombre)}</span><span class="rsub">${p.vencido ? '<span class="pill due">Confirmar</span> ' : ''}${esc(diaPlan(p))}</span></span>
+<span class="ramt num">${p.monto ? money(p.monto) : '<small>Presupuestar</small>'}</span></button>`;
+};
+return `<section class="panel planes">
+<div class="ph"><h2>Planes</h2>${est ? `<span class="meta num">${money(est)} en ${mesL(cur)}</span>` : ''}<button class="link" data-act="planes-act">Actualizar</button></div>
+${P.error ? `<p class="hint" style="margin-top:0">No se pudo leer el calendario: ${esc(P.error)}</p>` : ''}
+${pend ? `<p class="hint" style="margin:0 0 4px">${pend === 1 ? 'Un plan ya pasó' : pend + ' planes ya pasaron'}: registre cuánto gastó o descártelo.</p>` : ''}
+${lista.length ? lista.map(fila).join('') : `<div class="empty">Anote un plan en Google Calendar con <b>APP</b> en el nombre y aparece acá. Si agrega el monto, queda presupuestado: <i>Cena sábado - APP $40000</i>.</div>`}
+</section>`;
+}
+function openPlan(id) {
+const p = planesAbiertos().find(x => x.id === id);
+if (!p) return;
+const F = { montoStr: amountInput(p.monto || ''), categoria: catPlan(p) };
+const est = () => { const v = parseAmount(F.montoStr); return v > 0 ? Math.round(v * 100) / 100 : ''; };
+const fila = extra => ({ ...(p.fila || {}), id: p.id, fecha: p.fecha, nombre: p.nombre, monto: est(), categoria: F.categoria, estado: 'pendiente', creado: (p.fila && p.fila.creado) || S.today, ...extra });
+openSheet(p.nombre, body => {
+const draw = () => {
+const cats = S.data.Categorias.filter(c => c.tipo === 'gasto');
+const bPay = `<button class="btn ${p.vencido ? 'primary' : ''}" id="pl-pay"${p.vencido ? '' : ' style="padding:14px"'}>Ya lo pagué</button>`;
+const bSave = `<button class="btn ${p.vencido ? '' : 'primary'}" id="pl-save"${p.vencido ? ' style="padding:14px"' : ''}>Guardar estimado</button>`;
+body.innerHTML = `
+<p class="hint" style="margin-top:0">${esc(cap(diaPlan(p)))}. ${p.vencido ? 'Ya pasó: registre cuánto gastó y cómo lo pagó, o descártelo si no se hizo.' : 'El estimado suma como gasto previsto del mes y no descuenta del disponible.'}</p>
+<div class="f"><div class="amount"><span>$</span><input data-f="montoStr" inputmode="decimal" placeholder="0" value="${esc(F.montoStr)}" aria-label="Estimado"></div><p class="hint">Cuánto calcula gastar.</p></div>
+<div class="f"><span class="lbl">Categoría</span>${chips('categoria', cats.map(c => ({ v: c.id, html: `${esc(c.emoji)} ${esc(c.nombre)}` })), F.categoria)}</div>
+<div class="actions" style="display:grid;gap:10px">${p.vencido ? bPay + bSave : bSave + bPay}
+<button class="btn ghost" id="pl-desc">Descartar plan</button></div>`;
+bindForm(body, F, draw);
+body.querySelector('#pl-save').onclick = () => save('Planes', fila(), 'Estimado guardado');
+body.querySelector('#pl-desc').onclick = () => save('Planes', fila({ estado: 'descartado' }), 'Plan descartado', [], true);
+body.querySelector('#pl-pay').onclick = () => {
+const m = { tipo: 'gasto', descripcion: p.nombre, categoria: F.categoria, monto: est(), fecha: p.fecha <= S.today ? p.fecha : S.today };
+closeSheet();
+setTimeout(() => openMov(m, p.nombre, { rapido: true, msg: 'Plan registrado como gasto',
+alGuardar: mov => [{ op: 'upsert', sheet: 'Planes', obj: fila({ estado: 'pagado', movId: mov.id }) }] }), 280);
+};
+};
+draw();
+});
+}
 function panelDeudas() {
 const ds = deudas().slice().sort((a, b) => deudaHoy(b).total - deudaHoy(a).total);
 const total = sum(ds, d => deudaHoy(d).total);
@@ -2677,6 +2762,7 @@ categoria: m.categoria || '', medio: m.medio || store.get('lastMedio') || (cards
 fecha: m.fecha || todayStr(), cuotas: String(Number(m.cuotas) || 1), modoCuota: isCuotaMode,
 viajeId: m.viajeId != null && m.viajeId !== '' ? m.viajeId : (!editing ? ((viajeEnFecha(m.fecha || todayStr()) || {}).id || '') : ''),
 };
+if (rapido && m.categoria) F.catElegida = true;
 const orig = { medio: m.medio, fecha: m.fecha, primerResumen: m.primerResumen };
 openSheet(titulo || (editing ? 'Editar movimiento' : (m.recurrenteId ? `Ajustar ${mesL(m.periodo)}` : 'Nuevo movimiento')), body => {
 const draw = (soft) => {
@@ -2740,7 +2826,8 @@ primerResumen: card && F.tipo === 'gasto' ? (keepP ? orig.primerResumen : period
 viajeId: F.tipo === 'gasto' ? F.viajeId : '',
 };
 if (F.tipo === 'gasto') store.set('lastMedio', F.medio);
-save('Movimientos', { ...obj, ts: obj.ts || Date.now() }, F.tipo === 'gasto' ? 'Gasto guardado' : 'Ingreso guardado');
+if (opc.alGuardar && !obj.id) obj.id = nuevoId('Movimientos');
+save('Movimientos', { ...obj, ts: obj.ts || Date.now() }, opc.msg || (F.tipo === 'gasto' ? 'Gasto guardado' : 'Ingreso guardado'), opc.alGuardar ? opc.alGuardar(obj) : []);
 };
 const del = body.querySelector('#m-del');
 if (del) del.onclick = () => removeRow('Movimientos', m.id, 'Movimiento borrado');
@@ -2876,7 +2963,7 @@ const r = e.src;
 const isIn = e.tipo === 'ingreso';
 const est = !e.card ? estadoEv(e) : null;
 const it = est ? { ev: e, estado: est, monto: e.ars, nombre: r.descripcion, fecha: e.fecha, in: isIn } : null;
-const canPay = est && !est.auto;
+const canPay = !!est;
 openSheet(r.descripcion, body => {
 body.innerHTML = `
 <p class="hint" style="font-size:15px">${e.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} fijo de <b>${e.moneda === 'USD' ? usd(e.orig) : money(e.orig)}</b> el ${fmtDate(e.fecha)} · ${esc(medioName(e.medio))}.</p>
@@ -3177,6 +3264,8 @@ resumen: el => openResumen(cardOf(el.dataset.card), el.dataset.p),
 resdet: el => openResumenTabla(cardOf(el.dataset.card), el.dataset.p),
 cardcat: el => openConsumoTarjeta(cardOf(el.dataset.card), el.dataset.p),
 movstabla: el => openMovsTabla(el.dataset.m),
+plan: el => openPlan(el.dataset.id),
+'planes-act': () => cargarPlanes(true),
 deuda: el => openDeuda((S.data.Deudas || []).find(x => x.id === el.dataset.id) || {}),
 variante: async el => {
 S.varLocal = true; const v = aplicarVariante(el.dataset.v); render();
@@ -3312,9 +3401,30 @@ S.mep = store.get('fin-mep');
 if (cached) { S.data = cached; S.syncing = true; }
 render();
 rapidoAlArrancar();
-try { const d = await call('apiGetAll'); S.syncing = false; setData(d); rapidoAlArrancar(); fetchTc(); fetchMep(); setTimeout(sincronizarExtras, 1500); }
+S.planes = store.get(planesKey()) || null;
+try { const d = await call('apiGetAll'); S.syncing = false; setData(d); rapidoAlArrancar(); fetchTc(); fetchMep(); cargarPlanes(); setTimeout(sincronizarExtras, 1500); }
 catch (err) { S.syncing = false; if (!sesionLeer()) return; render(); toast('No se pudieron cargar los datos: ' + (err && err.message || err)); }
 }
+const planesKey = () => 'fin-planes:' + ((usuarioActual() || {}).id || 'anon');
+let planesCargando = false;
+async function cargarPlanes(avisar) {
+if (planesCargando) return;
+planesCargando = true;
+try {
+const r = await llamar('apiPlanes');
+S.planes = { ...r, at: Date.now() };
+store.set(planesKey(), S.planes);
+if (avisar) toast('Planes actualizados');
+} catch (err) {
+const msg = String(err && err.message || err);
+S.planes = /no disponible/i.test(msg) ? null : { ...(S.planes || {}), error: msg.replace(/^(Exception|Error):\s*/, '') };
+if (avisar) toast('No se pudo leer el calendario: ' + msg);
+} finally { planesCargando = false; }
+render();
+}
+document.addEventListener('visibilitychange', () => {
+if (!document.hidden && S.data && sesionLeer() && S.planes && !S.planes.soloAdmin && Date.now() - (S.planes.at || 0) > 600000) cargarPlanes();
+});
 const RAPIDO = !!window.FIN_RAPIDO || /[?&]nuevo=gasto\b/.test(location.search);
 let rapidoAbierto = false;
 function rapidoAlArrancar() {
