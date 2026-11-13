@@ -821,6 +821,7 @@ if (ancho > 0 && b.scrollWidth > ancho) b.style.fontSize = Math.floor(parseFloat
 });
 }
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { try { ajustarCifras(); } catch (e) { /* sin vista todavía */ } });
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { try { ajustarCifras(); } catch (e) { /* sin vista todavía */ } });
 function lineChart(points, opts = {}) {
 const lab = opts.lab || (p => mesC(p.M));
 const tip = opts.tip || (p => [`${mesL(p.M)} ${p.M.slice(0, 4)}`, `Acumulado ${money(p.v)}`]);
@@ -944,7 +945,9 @@ const totOut = sum(outs, i => i.monto), totPaid = sum(outs.filter(isPaid), i => 
 const vencidos = outs.filter(i => i.estado && i.estado.st === 'pendiente');
 const gastos = S.ev.filter(e => e.tipo === 'gasto' && e.consumo === M);
 const totalG = sum(gastos, e => e.ars);
-const movs = S.ev.filter(e => e.consumo === M).sort((a, b) => a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0);
+const movs = S.ev.filter(e => e.consumo === M).sort((a, b) => a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : (Number(b.src && b.src.ts) || 0) - (Number(a.src && a.src.ts) || 0));
+const ultimos = movs.filter(e => e.fecha <= S.today), proximos = movs.filter(e => e.fecha > S.today).reverse();
+const verTodos = `<button class="btn small" style="width:100%;margin-top:8px" data-act="sub" data-sv="inicio" data-t="movimientos">Ver los ${movs.length} movimientos de ${mesL(M)}</button>`;
 const tab = subTab('inicio');
 const hdr = `<div class="hello"><span class="hi">${LOGO}Hola${name ? `, <b>${esc(name)}</b>` : ''}</span><span class="hello-r"><span class="sync">${S.syncing ? 'Sincronizando…' : fmtDate(S.today)}</span></span></div>
 ${subTabsBar('inicio', { movimientos: movs.length })}`;
@@ -1040,10 +1043,14 @@ ${ins.map(it => payRow(it, false)).join('')}
 </section>` : ''}
 ${panelDeudas()}
 </div><div>
-<section class="panel">
-<div class="ph"><h2>Últimos movimientos</h2><span class="meta">${movs.length} en ${mesL(M)}</span></div>
-${movs.length ? movs.slice(0, 8).map(evRow).join('') + `<button class="btn small" style="width:100%;margin-top:8px" data-act="sub" data-sv="inicio" data-t="movimientos">Ver los ${movs.length} movimientos</button>` : `<div class="empty">Sin movimientos.<br><button class="btn" data-act="new">Cargar el primero</button></div>`}
-</section>
+${ultimos.length || !proximos.length ? `<section class="panel">
+<div class="ph"><h2>Últimos movimientos</h2><span class="meta">${ultimos.length} hasta hoy</span></div>
+${ultimos.length ? ultimos.slice(0, 8).map(evRow).join('') + verTodos : `<div class="empty">Sin movimientos.<br><button class="btn" data-act="new">Cargar el primero</button></div>`}
+</section>` : ''}
+${proximos.length ? `<section class="panel">
+<div class="ph"><h2>Próximos movimientos</h2><span class="meta">${proximos.length} por venir</span></div>
+${proximos.slice(0, 8).map(evRow).join('')}${ultimos.length ? '' : verTodos}
+</section>` : ''}
 </div></div>`;
 }
 function panelEnQueSeVa(gastos, totalG, M) {
