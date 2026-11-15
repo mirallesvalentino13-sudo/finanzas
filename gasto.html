@@ -3707,7 +3707,7 @@ String(texto || '').split(/[,\n]/).map(x => x.trim().slice(0, 80)).filter(Boolea
 if (ops.some(o => mismoTexto(o.obj.nombre, nombre))) return;
 const ya = todos.find(i => mismoTexto(i.nombre, nombre));
 if (ya && ya.activo !== false && !ya.hecho) return;
-ops.push(vidaUp(ya ? { ...ya, activo: true, hecho: false } : { id: vidaId(), tipo: 'item', grupo: lista, nombre, hecho: false, activo: true, valor: 0, creado: S.today }));
+ops.push(vidaUp(ya ? { ...ya, activo: true, hecho: false } : { id: vidaId(), tipo: 'item', grupo: lista, nombre, hecho: false, activo: true, num: 0, creado: S.today }));
 });
 if (!ops.length) { toast('Eso ya está en la lista.'); return; }
 vidaEscribir(ops);
@@ -3723,7 +3723,7 @@ const inp = document.querySelector(`form[data-vd-add="${lista}"] input`); if (in
 function vidaSuper() {
 const en = itemsDe('super'), pend = en.filter(i => !i.hecho), carro = en.filter(i => i.hecho);
 const frec = vidaRows('item').filter(i => i.grupo === 'super' && i.activo === false)
-.sort((a, b) => (Number(b.valor) || 0) - (Number(a.valor) || 0) || String(a.nombre).localeCompare(String(b.nombre))).slice(0, 40);
+.sort((a, b) => (Number(b.num) || 0) - (Number(a.num) || 0) || String(a.nombre).localeCompare(String(b.nombre))).slice(0, 40);
 const comprar = `<section class="panel">
 <div class="ph"><h2>Para comprar</h2><span class="meta">${pend.length ? plural(pend.length, 'producto', 'productos') : 'nada pendiente'}</span></div>
 ${formAgregar('super', 'Agregar: leche, pan, huevos')}
@@ -3800,7 +3800,7 @@ const MANT_SUGERIDAS = [['auto', 'Service del auto', 12], ['auto', 'VTV', 12], [
 function mantLista() {
 const orden = { vencida: 0, nunca: 1, pronto: 2, aldia: 3 };
 return vidaRows('mant').filter(m => m.activo !== false).map(m => {
-const cada = Math.max(1, Number(m.valor) || 12), prox = m.fecha ? sumarMeses(m.fecha, cada) : '', dias = prox ? diasEntre(S.today, prox) : null;
+const cada = Math.max(1, Number(m.num) || 12), prox = m.fecha ? sumarMeses(m.fecha, cada) : '', dias = prox ? diasEntre(S.today, prox) : null;
 return { r: m, cada, prox, dias, estado: !m.fecha ? 'nunca' : dias < 0 ? 'vencida' : dias <= 30 ? 'pronto' : 'aldia' };
 }).sort((a, b) => orden[a.estado] - orden[b.estado] || String(a.prox).localeCompare(String(b.prox)));
 }
@@ -3843,13 +3843,13 @@ function mantHecho(m) {
 const hist = [m.fecha, ...String(m.detalle || '').split(',')].map(x => x.trim()).filter(Boolean).slice(0, 12).join(',');
 const p = call('apiBatch', [vidaUp({ ...m, fecha: S.today, detalle: hist })]);
 render();
-ofrecerDeshacer(`"${m.nombre}": hecho hoy. Vuelve a tocar el ${fechaCorta(sumarMeses(S.today, Math.max(1, Number(m.valor) || 12)))}.`, p, [vidaUp(m)]);
+ofrecerDeshacer(`"${m.nombre}": hecho hoy. Vuelve a tocar el ${fechaCorta(sumarMeses(S.today, Math.max(1, Number(m.num) || 12)))}.`, p, [vidaUp(m)]);
 p.then(() => sincronizarExtras()).catch(err => toast('No se guardó (se deshizo el cambio): ' + (err && err.message || err)));
 }
 function openMant(m) {
 m = m || {};
 const editing = !!m.id, std = ['1', '3', '6', '12', '24'];
-const F = { nombre: m.nombre || '', grupo: m.grupo || 'casa', cada: String(Number(m.valor) || 12), fecha: m.fecha || '', nota: m.nota || '' };
+const F = { nombre: m.nombre || '', grupo: m.grupo || 'casa', cada: String(Number(m.num) || 12), fecha: m.fecha || '', nota: m.nota || '' };
 openSheet(editing ? 'Editar tarea' : 'Nueva tarea de mantenimiento', body => {
 const draw = () => {
 const otro = !std.includes(F.cada);
@@ -3871,7 +3871,7 @@ const c = parseInt(F.cada) || 0;
 if (!F.nombre.trim()) { toast('Ingresá qué hay que hacer.'); return; }
 if (!(c >= 1 && c <= 120)) { toast('Indicá cada cuántos meses toca (de 1 a 120).'); return; }
 if (F.fecha && F.fecha > S.today) { toast('La última vez no puede ser una fecha futura.'); return; }
-save('Vida', { ...m, id: m.id || vidaId(), tipo: 'mant', grupo: F.grupo, nombre: F.nombre.trim(), emoji: MANT_EMOJI[F.grupo], valor: c, fecha: F.fecha, nota: F.nota.trim(), activo: true, creado: m.creado || S.today }, editing ? 'Tarea guardada' : 'Tarea agregada').then(() => sincronizarExtras());
+save('Vida', { ...m, id: m.id || vidaId(), tipo: 'mant', grupo: F.grupo, nombre: F.nombre.trim(), emoji: MANT_EMOJI[F.grupo], num: c, fecha: F.fecha, nota: F.nota.trim(), activo: true, creado: m.creado || S.today }, editing ? 'Tarea guardada' : 'Tarea agregada').then(() => sincronizarExtras());
 };
 const del = body.querySelector('#vm-del');
 if (del) del.onclick = () => removeRow('Vida', m.id, 'Tarea borrada');
@@ -3895,13 +3895,13 @@ if (!ms.length && !vac.length && !est.length) return `<section class="hero compa
 <div class="hero-acts"><button class="btn primary" style="max-width:280px" data-act="vd-salud" data-id="">Registrar lo primero</button></div>
 </section>`;
 const sel = ms.find(x => mismoTexto(x.nombre, S.vdMetrica || '')) || ms[0];
-const serie = sel ? saludDe('medicion').filter(r => mismoTexto(r.nombre, sel.nombre) && r.valor !== '' && r.valor != null).reverse() : [];
+const serie = sel ? saludDe('medicion').filter(r => mismoTexto(r.nombre, sel.nombre) && r.num !== '' && r.num != null).reverse() : [];
 const ult = serie[serie.length - 1], ant = serie[serie.length - 2], pri = serie[0];
 const u = sel && sel.unidad ? ' ' + sel.unidad : '';
-const dif = (a, b) => { const d = Number(a.valor) - Number(b.valor); return `${d > 0 ? '+' : d < 0 ? '−' : ''}${nf1(Math.abs(d))}${u}`; };
+const dif = (a, b) => { const d = Number(a.num) - Number(b.num); return `${d > 0 ? '+' : d < 0 ? '−' : ''}${nf1(Math.abs(d))}${u}`; };
 const hero = ult ? `<section class="hero compact">
 <p class="hero-label">${esc(sel.nombre)} · ${cuando(ult.fecha)}</p>
-<div class="big num">${nf1(ult.valor)}${u ? `<small class="vd-u">${esc(sel.unidad)}</small>` : ''}</div>
+<div class="big num">${nf1(ult.num)}${u ? `<small class="vd-u">${esc(sel.unidad)}</small>` : ''}</div>
 <p class="hero-sub">${ant ? `<b class="num">${dif(ult, ant)}</b> desde el registro anterior (${fechaCorta(ant.fecha)}).` : 'Primer registro. Con el segundo ya se ve la diferencia.'}${ant && pri !== ant ? ` Desde el primero (${fechaCorta(pri.fecha)}): <b class="num">${dif(ult, pri)}</b>.` : ''}</p>
 <div class="hero-kpis tres"><div><span>Registros</span><b class="num">${serie.length}</b></div><div><span>Última vacuna</span><b>${vac[0] ? fechaCorta(vac[0].fecha) : '—'}</b></div><div><span>Último estudio</span><b>${est[0] ? fechaCorta(est[0].fecha) : '—'}</b></div></div>
 </section>` : '';
@@ -3909,9 +3909,9 @@ const fila = r => `<button class="row" data-act="vd-salud" data-id="${esc(r.id)}
 const evo = `<section class="panel">
 <div class="ph"><h2>Evolución</h2><span class="meta">${sel ? esc(sel.nombre) + (sel.unidad ? ' (' + esc(sel.unidad) + ')' : '') : ''}</span></div>
 ${ms.length > 1 ? `<div class="chips" style="margin-bottom:10px">${ms.map(x => `<button class="chip" data-act="vd-metrica" data-n="${esc(x.nombre)}" aria-pressed="${x === sel}">${esc(x.nombre)}</button>`).join('')}</div>` : ''}
-${serie.length > 1 ? `<div class="chart">${fit((W, H) => lineChart(serie.map(r => ({ v: Number(r.valor), f: r.fecha })), { W, H, zero: false, fmt: nf1, lab: p => fmtDate(p.f), tip: p => [fechaCorta(p.f), `${nf1(p.v)}${u}`], aria: `Evolución de ${sel.nombre}` }), { fill: true })}</div>`
+${serie.length > 1 ? `<div class="chart">${fit((W, H) => lineChart(serie.map(r => ({ v: Number(r.num), f: r.fecha })), { W, H, zero: false, fmt: nf1, lab: p => fmtDate(p.f), tip: p => [fechaCorta(p.f), `${nf1(p.v)}${u}`], aria: `Evolución de ${sel.nombre}` }), { fill: true })}</div>`
 : `<div class="empty">${serie.length ? 'Con el segundo registro aparece el gráfico.' : 'Todavía no hay mediciones. Con "Registrar" puede anotar su peso u otra medición.'}</div>`}
-${serie.slice().reverse().slice(0, 5).map(r => `<button class="row" data-act="vd-salud" data-id="${esc(r.id)}"><span class="rbody"><span class="rtitle">${fechaCorta(r.fecha)}</span>${r.nota ? `<span class="rsub">${esc(r.nota)}</span>` : ''}</span><span class="ramt num">${nf1(r.valor)}${u}</span></button>`).join('')}
+${serie.slice().reverse().slice(0, 5).map(r => `<button class="row" data-act="vd-salud" data-id="${esc(r.id)}"><span class="rbody"><span class="rtitle">${fechaCorta(r.fecha)}</span>${r.nota ? `<span class="rsub">${esc(r.nota)}</span>` : ''}</span><span class="ramt num">${nf1(r.num)}${u}</span></button>`).join('')}
 <button class="btn small" style="width:100%;margin-top:10px" data-act="vd-salud-nuevo" data-g="medicion">Registrar medición</button>
 </section>`;
 const vacunas = `<section class="panel">
@@ -3929,7 +3929,7 @@ return `${hero}<div class="flow"><div>${evo}</div><div>${vacunas}</div><div>${es
 function openSalud(r, grupo) {
 r = r || {};
 const editing = !!r.id, ms = metricas();
-const F = { grupo: r.grupo || grupo || 'medicion', nombre: r.nombre || '', valorStr: r.valor === '' || r.valor == null ? '' : String(r.valor).replace('.', ','), unidad: r.unidad || '', fecha: r.fecha || S.today, nota: r.nota || '' };
+const F = { grupo: r.grupo || grupo || 'medicion', nombre: r.nombre || '', numStr: r.num === '' || r.num == null ? '' : String(r.num).replace('.', ','), unidad: r.unidad || '', fecha: r.fecha || S.today, nota: r.nota || '' };
 if (!editing && F.grupo === 'medicion' && !F.nombre) { const m0 = ms.find(x => mismoTexto(x.nombre, S.vdMetrica || '')) || ms[0]; F.nombre = m0 ? m0.nombre : 'Peso'; F.unidad = m0 ? m0.unidad : 'kg'; }
 openSheet(editing ? 'Editar registro' : 'Registrar en Salud', body => {
 const draw = () => {
@@ -3939,7 +3939,7 @@ ${editing ? '' : `<div class="f">${seg('grupo', SALUD_GRUPOS, F.grupo)}</div>`}
 ${med && ms.length ? `<div class="f"><span class="lbl">Qué mide</span><div class="chips">${ms.map(x => `<button type="button" class="chip" data-met="${esc(x.nombre)}" data-uni="${esc(x.unidad)}" aria-pressed="${mismoTexto(x.nombre, F.nombre)}">${esc(x.nombre)}</button>`).join('')}</div></div>` : ''}
 <div class="${med ? 'two' : ''}"><div class="f"><label for="vs-n">${med ? 'Medición' : F.grupo === 'vacuna' ? 'Vacuna' : 'Estudio o control'}</label><input id="vs-n" class="in-text" data-f="nombre" maxlength="60" placeholder="${med ? 'Ej: Peso, Presión, Cintura' : F.grupo === 'vacuna' ? 'Ej: Antigripal, Antitetánica' : 'Ej: Análisis de sangre, Dentista'}" value="${esc(F.nombre)}"></div>
 ${med ? `<div class="f"><label for="vs-u">Unidad</label><input id="vs-u" class="in-text" data-f="unidad" maxlength="12" placeholder="kg" value="${esc(F.unidad)}"></div>` : ''}</div>
-${med ? `<div class="f"><label for="vs-v">Valor</label><input id="vs-v" class="in-text num" inputmode="decimal" data-f="valorStr" placeholder="Ej: 78,4" value="${esc(F.valorStr)}"></div>` : ''}
+${med ? `<div class="f"><label for="vs-v">Valor</label><input id="vs-v" class="in-text num" inputmode="decimal" data-f="numStr" placeholder="Ej: 78,4" value="${esc(F.numStr)}"></div>` : ''}
 <div class="f"><label for="vs-f">Fecha</label><input id="vs-f" type="date" class="in-text" data-f="fecha" value="${esc(F.fecha)}"></div>
 <div class="f"><label for="vs-no">Nota (opcional)</label><input id="vs-no" class="in-text" data-f="nota" placeholder="${med ? 'Ej: en ayunas' : F.grupo === 'vacuna' ? 'Ej: segunda dosis, refuerzo en 2027' : 'Ej: todo bien, repetir en un año'}" value="${esc(F.nota)}"></div>
 <div class="actions"><button class="btn primary" id="vs-save">${editing ? 'Guardar cambios' : 'Guardar'}</button>
@@ -3947,12 +3947,12 @@ ${editing ? '<button class="btn ghost" id="vs-del">Borrar registro</button>' : '
 bindForm(body, F, draw);
 body.querySelectorAll('[data-met]').forEach(b => b.onclick = () => { F.nombre = b.dataset.met; F.unidad = b.dataset.uni; draw(); });
 body.querySelector('#vs-save').onclick = () => {
-const v = Number(String(F.valorStr).trim().replace(/\./g, '').replace(',', '.'));
+const v = Number(String(F.numStr).trim().replace(/\./g, '').replace(',', '.'));
 if (!F.nombre.trim()) { toast(med ? 'Indicá qué medición es (por ejemplo, Peso).' : 'Ingresá un nombre.'); return; }
-if (med && !(String(F.valorStr).trim() && isFinite(v))) { toast('Ingresá el valor de la medición.'); return; }
+if (med && !(String(F.numStr).trim() && isFinite(v))) { toast('Ingresá el valor de la medición.'); return; }
 if (!F.fecha) { toast('Ingresá la fecha.'); return; }
 if (med) S.vdMetrica = F.nombre.trim();
-save('Vida', { ...r, id: r.id || vidaId(), tipo: 'salud', grupo: F.grupo, nombre: F.nombre.trim(), fecha: F.fecha, valor: med ? Math.round(v * 100) / 100 : '', unidad: med ? F.unidad.trim() : '', nota: F.nota.trim(), activo: true, creado: r.creado || S.today }, editing ? 'Registro guardado' : 'Registro guardado');
+save('Vida', { ...r, id: r.id || vidaId(), tipo: 'salud', grupo: F.grupo, nombre: F.nombre.trim(), fecha: F.fecha, num: med ? Math.round(v * 100) / 100 : '', unidad: med ? F.unidad.trim() : '', nota: F.nota.trim(), activo: true, creado: r.creado || S.today }, editing ? 'Registro guardado' : 'Registro guardado');
 };
 const del = body.querySelector('#vs-del');
 if (del) del.onclick = () => removeRow('Vida', r.id, 'Registro borrado');
@@ -3973,7 +3973,7 @@ const semana = es.filter(e => e.fecha >= lun && e.fecha <= S.today), delMes = es
 const semanas = new Set(es.map(e => lunesDe(e.fecha)));
 let racha = 0;
 for (let w = semanas.has(lun) ? lun : sumarDias(lun, -7); semanas.has(w); w = sumarDias(w, -7)) racha++;
-const min = sum(delMes, e => Number(e.valor) || 0);
+const min = sum(delMes, e => Number(e.num) || 0);
 const hero = `<section class="hero compact">
 <p class="hero-label">Entrenamientos <em>esta semana</em></p>
 <div class="big num">${semana.length}</div>
@@ -3993,7 +3993,7 @@ const porDia = {}; es.forEach(e => (porDia[e.fecha] = porDia[e.fecha] || []).pus
 let celdas = '';
 for (let f = sumarDias(lun, -35); f <= sumarDias(lun, 6); f = sumarDias(f, 1)) {
 const l = porDia[f] || [], fut = f > S.today, dia = Number(f.slice(8));
-const tip = l.length ? tipAttr([fechaCorta(f), ...l.map(e => e.nombre + (Number(e.valor) > 0 ? ` · ${e.valor} min` : ''))]) : '';
+const tip = l.length ? tipAttr([fechaCorta(f), ...l.map(e => e.nombre + (Number(e.num) > 0 ? ` · ${e.num} min` : ''))]) : '';
 celdas += fut ? `<span class="hc fut"><b>${dia}</b></span>`
 : `<button class="hc ${l.length ? 'vd-on' : ''} ${f === S.today ? 'hoy' : ''}" data-act="vd-dia" data-f="${f}" ${tip} aria-label="${fechaCorta(f)}: ${l.length ? l.map(e => esc(e.nombre)).join(', ') : 'sin entrenamiento'}"><b>${dia}</b>${l.length ? `<small>${esc(l.length > 1 ? l.length + ' entr.' : String(l[0].nombre).slice(0, 9))}</small>` : ''}</button>`;
 }
@@ -4005,7 +4005,7 @@ const cal = `<section class="panel">
 const dia = f => cap(new Date(f + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', ''));
 const hist = `<section class="panel">
 <div class="ph"><h2>Historial</h2><span class="meta">${es.length ? plural(es.length, 'registro', 'registros') : ''}</span></div>
-${es.slice(0, 12).map(e => `<button class="row" data-act="vd-entreno" data-id="${esc(e.id)}"><span class="rbody"><span class="rtitle">${esc(e.nombre)}</span><span class="rsub">${dia(e.fecha)} ${fechaCorta(e.fecha)}${e.nota ? ' · ' + esc(e.nota) : ''}</span></span>${Number(e.valor) > 0 ? `<span class="ramt num">${e.valor} min</span>` : ''}</button>`).join('')
+${es.slice(0, 12).map(e => `<button class="row" data-act="vd-entreno" data-id="${esc(e.id)}"><span class="rbody"><span class="rtitle">${esc(e.nombre)}</span><span class="rsub">${dia(e.fecha)} ${fechaCorta(e.fecha)}${e.nota ? ' · ' + esc(e.nota) : ''}</span></span>${Number(e.num) > 0 ? `<span class="ramt num">${e.num} min</span>` : ''}</button>`).join('')
 || '<div class="empty">Acá queda cada entrenamiento con su fecha, duración y nota.</div>'}
 </section>`;
 return `${hero}<div class="flow"><div>${rutinas}</div><div>${cal}</div><div>${hist}</div></div>`;
@@ -4035,7 +4035,7 @@ draw();
 function openEntreno(e, fecha) {
 e = e || {};
 const editing = !!e.id, ruts = rutinasActivas();
-const F = { rutina: e.grupo && ruts.some(r => r.id === e.grupo) ? e.grupo : (editing || !ruts.length ? '' : ruts[0].id), nombre: e.nombre || '', fecha: e.fecha || fecha || S.today, minStr: Number(e.valor) > 0 ? String(e.valor) : '', nota: e.nota || '' };
+const F = { rutina: e.grupo && ruts.some(r => r.id === e.grupo) ? e.grupo : (editing || !ruts.length ? '' : ruts[0].id), nombre: e.nombre || '', fecha: e.fecha || fecha || S.today, minStr: Number(e.num) > 0 ? String(e.num) : '', nota: e.nota || '' };
 openSheet(editing ? 'Editar entrenamiento' : 'Registrar entrenamiento', body => {
 const draw = () => {
 const rut = ruts.find(r => r.id === F.rutina), ej = rut ? String(rut.detalle || '').split('\n').map(x => x.trim()).filter(Boolean) : [];
@@ -4053,7 +4053,7 @@ const nombre = rut ? rut.nombre : F.nombre.trim(), m = parseInt(F.minStr) || 0;
 if (!nombre) { toast('Indicá qué hizo.'); return; }
 if (!F.fecha || F.fecha > S.today) { toast('La fecha no puede ser futura.'); return; }
 if (m < 0 || m > 1440) { toast('Los minutos no son válidos.'); return; }
-save('Vida', { ...e, id: e.id || vidaId(), tipo: 'entreno', grupo: rut ? rut.id : '', nombre, fecha: F.fecha, valor: m || '', nota: F.nota.trim(), activo: true, creado: e.creado || S.today }, editing ? 'Entrenamiento guardado' : 'Entrenamiento registrado');
+save('Vida', { ...e, id: e.id || vidaId(), tipo: 'entreno', grupo: rut ? rut.id : '', nombre, fecha: F.fecha, num: m || '', nota: F.nota.trim(), activo: true, creado: e.creado || S.today }, editing ? 'Entrenamiento guardado' : 'Entrenamiento registrado');
 };
 const del = body.querySelector('#ve-del');
 if (del) del.onclick = () => removeRow('Vida', e.id, 'Entrenamiento borrado');
@@ -4069,10 +4069,10 @@ if (t === 'super') { const i = document.querySelector('form[data-vd-add="super"]
 function irAVida(t) { S.view = 'vida'; S.sub = { ...(S.sub || {}), vida: t }; store.set('fin-sub', S.sub); render(); arriba(); }
 Object.assign(ACTIONS, {
 'vd-toggle': el => { const i = vidaRow(el.dataset.id); if (i) vidaEscribir([vidaUp({ ...i, hecho: !i.hecho })]); },
-'vd-quitar': el => { const i = vidaRow(el.dataset.id); if (!i) return; if (i.grupo === 'super' && Number(i.valor) > 0) vidaEscribir([vidaUp({ ...i, activo: false, hecho: false })]); else removeRow('Vida', i.id, `"${i.nombre}" borrado`); },
+'vd-quitar': el => { const i = vidaRow(el.dataset.id); if (!i) return; if (i.grupo === 'super' && Number(i.num) > 0) vidaEscribir([vidaUp({ ...i, activo: false, hecho: false })]); else removeRow('Vida', i.id, `"${i.nombre}" borrado`); },
 'vd-vaciar': () => {
 const c = itemsDe('super').filter(i => i.hecho); if (!c.length) return;
-vidaEscribir(c.map(i => vidaUp({ ...i, activo: false, hecho: false, valor: (Number(i.valor) || 0) + 1 })), `Carrito vacío: ${plural(c.length, 'producto pasó', 'productos pasaron')} a frecuentes`);
+vidaEscribir(c.map(i => vidaUp({ ...i, activo: false, hecho: false, num: (Number(i.num) || 0) + 1 })), `Carrito vacío: ${plural(c.length, 'producto pasó', 'productos pasaron')} a frecuentes`);
 },
 'vd-frec': el => { const i = vidaRow(el.dataset.id); if (!i) return; if (S.vdFrecEdit) removeRow('Vida', i.id, `"${i.nombre}" borrado de los frecuentes`); else vidaEscribir([vidaUp({ ...i, activo: true, hecho: false })]); },
 'vd-frec-editar': () => { S.vdFrecEdit = !S.vdFrecEdit; render(); },
@@ -4081,13 +4081,13 @@ vidaEscribir(c.map(i => vidaUp({ ...i, activo: false, hecho: false, valor: (Numb
 'vd-lista-sug': el => vidaEscribir([vidaUp({ id: vidaId(), tipo: 'lista', nombre: el.dataset.n, emoji: el.dataset.e, activo: true, creado: S.today })]),
 'vd-mant': el => openMant(vidaRow(el.dataset.id)),
 'vd-mant-hecho': el => { const m = vidaRow(el.dataset.id); if (m) mantHecho(m); },
-'vd-mant-sug': el => vidaEscribir([vidaUp({ id: vidaId(), tipo: 'mant', grupo: el.dataset.g, nombre: el.dataset.n, emoji: MANT_EMOJI[el.dataset.g], valor: Number(el.dataset.c) || 12, fecha: '', activo: true, creado: S.today })]),
+'vd-mant-sug': el => vidaEscribir([vidaUp({ id: vidaId(), tipo: 'mant', grupo: el.dataset.g, nombre: el.dataset.n, emoji: MANT_EMOJI[el.dataset.g], num: Number(el.dataset.c) || 12, fecha: '', activo: true, creado: S.today })]),
 'vd-salud': el => openSalud(vidaRow(el.dataset.id)),
 'vd-salud-nuevo': el => openSalud(null, el.dataset.g),
 'vd-metrica': el => { S.vdMetrica = el.dataset.n; render(); },
 'vd-rutina': el => openRutina(vidaRow(el.dataset.id)),
 'vd-rutina-sug': el => vidaEscribir([vidaUp({ id: vidaId(), tipo: 'rutina', nombre: el.dataset.n, emoji: el.dataset.e, detalle: '', activo: true, creado: S.today })]),
-'vd-rutina-hoy': el => { const r = vidaRow(el.dataset.id); if (r) vidaEscribir([vidaUp({ id: vidaId(), tipo: 'entreno', grupo: r.id, nombre: r.nombre, fecha: S.today, valor: '', nota: '', activo: true, creado: S.today })], `${r.nombre}: registrado hoy`); },
+'vd-rutina-hoy': el => { const r = vidaRow(el.dataset.id); if (r) vidaEscribir([vidaUp({ id: vidaId(), tipo: 'entreno', grupo: r.id, nombre: r.nombre, fecha: S.today, num: '', nota: '', activo: true, creado: S.today })], `${r.nombre}: registrado hoy`); },
 'vd-entreno': el => openEntreno(vidaRow(el.dataset.id)),
 'vd-dia': el => { const l = entrenos().filter(e => e.fecha === el.dataset.f); if (l.length === 1) openEntreno(l[0]); else openEntreno(null, el.dataset.f); },
 });
