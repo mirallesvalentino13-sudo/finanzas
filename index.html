@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Finanzas</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://script.google.com https://script.googleusercontent.com https://dolarapi.com https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://dolarapi.com https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -15,7 +15,45 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-<script>window.FIN_API = "https://script.google.com/macros/s/AKfycbzz3-O6CLLgCxMk5bu5AgXvcWzKHhXd83sPtjtNrvbbQlkhQPZLVXd6CweqA4RU8q71/exec";</script>
+<script>window.FIN_API = "https://script.google.com/macros/s/AKfycbzz3-O6CLLgCxMk5bu5AgXvcWzKHhXd83sPtjtNrvbbQlkhQPZLVXd6CweqA4RU8q71/exec"; window.FIN_VER = '7b202f79e13f';</script>
+<script>(function () {
+  var V = window.FIN_VER, nueva = '', toco = false, ultimo = 0, avisada = '';
+  function intento() { try { return (sessionStorage.getItem('fin-ver') || '').split('|'); } catch (e) { return null; } }
+  function recargar() {
+    try { sessionStorage.setItem('fin-ver', nueva + '|' + Date.now()); } catch (e) { }
+    location.replace(location.pathname + '?v=' + nueva + '.' + Date.now().toString(36));
+  }
+  function libre() {
+    if (toco || document.documentElement.classList.contains('guardando')) return false;
+    var ins = document.querySelectorAll('input:not([type=date]):not([type=month]):not([type=checkbox]):not([type=radio]):not([type=file]), textarea');
+    for (var i = 0; i < ins.length; i++) {
+      var el = ins[i], enVentana = el.closest('#sheet-b, #modal');
+      if (enVentana ? el.value : el.value !== el.defaultValue) return false;
+    }
+    return true;
+  }
+  function aplicar() {
+    var a = intento();
+    if (!nueva || (a ? a[0] === nueva && Date.now() - a[1] < 120000 : location.search.indexOf('v=' + nueva) >= 0)) return;
+    if (libre()) return recargar();
+    if (avisada !== nueva && typeof toast === 'function' && document.getElementById('toast')) {
+      avisada = nueva;
+      toast('Hay una versión nueva de la app', { label: 'Actualizar', fn: recargar });
+    }
+  }
+  function revisar() {
+    if (Date.now() - ultimo < 30000) return aplicar();
+    ultimo = Date.now();
+    fetch('version.txt?t=' + ultimo, { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (t) {
+      t = t.trim();
+      if (/^[0-9a-f]{12}$/.test(t) && t !== V) { nueva = t; aplicar(); }
+    }).catch(function () {});
+  }
+  ['pointerdown', 'keydown'].forEach(function (e) { document.addEventListener(e, function () { toco = true; }, true); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { toco = false; revisar(); } });
+  window.addEventListener('pageshow', function (e) { if (e.persisted) { toco = false; revisar(); } });
+  revisar();
+})();</script>
 <script>
 window.__arranque = { paso: 'inicio', errores: [] };
 window.addEventListener('error', function (ev) { window.__arranque.errores.push(String(ev.message || 'Error') + (ev.lineno ? ' (línea ' + ev.lineno + ')' : '')); });
